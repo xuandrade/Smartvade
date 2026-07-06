@@ -1,0 +1,6 @@
+{
+  "name": "Smart Vade Interativo",
+  "description": "Vade Mecum Digital interativo, offline-first, focado em fidelidade jurídica e acessibilidade para TDAH.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
