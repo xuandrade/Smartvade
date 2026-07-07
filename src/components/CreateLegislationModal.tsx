@@ -25,7 +25,12 @@ export function CreateLegislationModal() {
       for (const line of lines) {
         const match = line.match(/(Art\.\s*\d+[A-Za-zº°]*(?:[-‑–][A-Za-z0-9]+)?).*?(\d+)\s*(?:vez|vezes|x)?\s*$/i);
         if (match) {
-           map[match[1].replace(/\s+/g, ' ').trim()] = parseInt(match[2], 10);
+           const key = match[1].replace(/\s+/g, ' ').trim();
+           const count = parseInt(match[2], 10);
+           const numericFallback = key.match(/\d+/)?.[0];
+
+           map[key] = count;
+           if (numericFallback) map[`Art. ${numericFallback}`] = count;
         }
       }
       return map;
