@@ -3,25 +3,9 @@ import { useStore } from '../store/useStore';
 import { LawNode, Legislation } from '../types';
 import { processHighlights, UserHighlightDef } from '../lib/highlighter';
 import { cn } from '../lib/utils';
-import { Sparkles, BookOpen, Bookmark, CheckCircle, Edit3, Trash2, X, Highlighter, Bold, Underline, Network, Brain, Wand2 } from 'lucide-react';
+import { Sparkles, MessageSquare, BookOpen, Bookmark, CheckCircle, Edit3, Trash2, X, Highlighter, Bold, Underline, Network, Brain, Wand2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { MindMapView } from './MindMapView';
-
-function getNodeText(node: LawNode): string {
-  return [node.label, node.text, ...(node.children || []).map(getNodeText)].join('\n');
-}
-
-function getIncidenceForNode(node: LawNode, legislation: Legislation, filters: ReturnType<typeof useStore.getState>['filters']) {
-  const matchNum = node.label.match(/\d+/);
-  if (!matchNum) return 0;
-
-  const articleKey = `Art. ${matchNum[0]}`;
-  if (filters.board === 'ALL') {
-    return Object.values(legislation.incidences || {}).reduce((acc, curr) => acc + (curr?.[articleKey] || 0), 0);
-  }
-
-  return legislation.incidences?.[filters.board]?.[articleKey] || 0;
-}
 
 export function ArticleCard({ node, legislation }: { node: LawNode, legislation: Legislation }) {
   const { 
@@ -29,7 +13,6 @@ export function ArticleCard({ node, legislation }: { node: LawNode, legislation:
     annotations, 
     addAnnotation, 
     deleteAnnotation, 
-    updateAnnotation,
     filters, 
     toggleNodeProperty, 
     toggleRightPanel,
@@ -45,23 +28,61 @@ export function ArticleCard({ node, legislation }: { node: LawNode, legislation:
   const [loadingHighlight, setLoadingHighlight] = useState(false);
   const [showAnnotationForm, setShowAnnotationForm] = useState(false);
   const [newAnnotation, setNewAnnotation] = useState('');
-  const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null);
-  const [editingAnnotationContent, setEditingAnnotationContent] = useState('');
+  
   const [selectionBox, setSelectionBox] = useState<{x: number, y: number, text: string} | null>(null);
   const cardRef = useRef<HTMLElement>(null);
 
   const nodeAnnotations = annotations[node.id] || [];
   const nodeHighlights = highlights[node.id] || [];
-  const fullNodeText = getNodeText(node);
-  const normalizedQuery = filters.searchQuery.trim().toLowerCase();
-  const fgvIncidence = getIncidenceForNode(node, legislation, filters);
-  const isHidden =
-    fgvIncidence < filters.minIncidence ||
-    (filters.showFavorites && !node.isFavorite) ||
-    (filters.showNeedsReview && !node.needsReview) ||
-    (filters.showRead === true && !node.isRead) ||
-    (filters.showRead === false && node.isRead) ||
-    (normalizedQuery.length > 0 && !fullNodeText.toLowerCase().includes(normalizedQuery));
+
+  const handleAutoHighlight = async () => {
+    setLoadingHighlight(true);
+    try {
+      const fullText = [node.text, ...node.children.map(c => c.text)].join('\n');
+      
+      const res = await fetch('/api/autohighlight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          text: fullText,
+          rule: filters.colorCodeConfig
+        })
+      });
+      
+      if (!res.ok) throw new Error('API failed');
+      
+      const data = await res.json();
+      if (data && Array.isArray(data)) {
+        useStore.getState().addHighlightsBatch(
+          node.id, 
+          data.map((h: any) => ({ nodeId: node.id, textStr: h.textStr, color: h.color }))
+        );
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Falha ao gerar grifos automáticos. Tente novamente.");
+    } finally {
+      setLoadingHighlight(false);
+    }
+  };
+  
+  let fgvIncidence = 0;
+  const matchNum = node.label.match(/\d+/);
+  if (matchNum) {
+     const numStr = matchNum[0];
+     const incMap = filters.board === 'ALL' 
+        ? Object.values(legislation.incidences).reduce((acc, curr) => {
+            acc += (curr[`Art. ${numStr}`] || 0);
+            return acc;
+          }, 0)
+        : legislation.incidences[filters.board]?.[`Art. ${numStr}`] || 0;
+     fgvIncidence = incMap;
+  }
+  
+  if (fgvIncidence < filters.minIncidence) return null;
+  if (filters.showFavorites && !node.isFavorite) return null;
+  if (filters.showRead === true && !node.isRead) return null;
+  if (filters.showRead === false && node.isRead) return null;
 
   useEffect(() => {
     const handleMouseUp = () => {
@@ -85,37 +106,6 @@ export function ArticleCard({ node, legislation }: { node: LawNode, legislation:
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
-  if (isHidden) return null;
-
-  const handleAutoHighlight = async () => {
-    setLoadingHighlight(true);
-    try {
-      const res = await fetch('/api/autohighlight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          text: fullNodeText,
-          rule: filters.colorCodeConfig
-        })
-      });
-      
-      if (!res.ok) throw new Error('API failed');
-      
-      const data = await res.json();
-      if (data && Array.isArray(data)) {
-        useStore.getState().addHighlightsBatch(
-          node.id, 
-          data.map((h: any) => ({ nodeId: node.id, textStr: h.textStr, color: h.color }))
-        );
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Falha ao gerar grifos automáticos. Tente novamente.");
-    } finally {
-      setLoadingHighlight(false);
-    }
-  };
-
   const handleApplyHighlight = (color: any) => {
     if (selectionBox) {
       addHighlight(node.id, { nodeId: node.id, textStr: selectionBox.text, color });
@@ -127,10 +117,12 @@ export function ArticleCard({ node, legislation }: { node: LawNode, legislation:
   const handleEnrich = async () => {
     setLoadingAi(true);
     try {
+      const fullText = [node.text, ...node.children.map(c => c.text)].join(' ');
+      
       const res = await fetch('/api/enrich', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: fullNodeText })
+        body: JSON.stringify({ text: fullText })
       });
       
       if (!res.ok) throw new Error('API failed');
@@ -153,10 +145,12 @@ export function ArticleCard({ node, legislation }: { node: LawNode, legislation:
   const handleGenerateMap = async () => {
     setLoadingMap(true);
     try {
+      const fullText = [node.text, ...node.children.map(c => c.text)].join(' ');
+      
       const res = await fetch('/api/mindmap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: fullNodeText })
+        body: JSON.stringify({ text: fullText })
       });
       
       if (!res.ok) throw new Error('API failed');
@@ -213,29 +207,17 @@ export function ArticleCard({ node, legislation }: { node: LawNode, legislation:
     });
   };
 
-  const startEditingAnnotation = (annotationId: string, content: string) => {
-    setEditingAnnotationId(annotationId);
-    setEditingAnnotationContent(content);
-  };
-
-  const saveEditingAnnotation = () => {
-    if (!editingAnnotationId || !editingAnnotationContent.trim()) return;
-    updateAnnotation(node.id, editingAnnotationId, editingAnnotationContent);
-    setEditingAnnotationId(null);
-    setEditingAnnotationContent('');
-  };
-
   let fgvBadgeClass = "";
   let fgvLabel = "";
   if (fgvIncidence > 6) {
     fgvBadgeClass = "bg-[#C0392B] text-white";
-    fgvLabel = `ESSENCIAL - COBRADO ${fgvIncidence} VEZES`;
+    fgvLabel = `🔥 ESSENCIAL — COBRADO ${fgvIncidence} VEZES`;
   } else if (fgvIncidence >= 5) {
     fgvBadgeClass = "bg-[#E67E22] text-white";
-    fgvLabel = `MUITO IMPORTANTE - COBRADO ${fgvIncidence} VEZES`;
+    fgvLabel = `⚠️ MUITO IMPORTANTE — COBRADO ${fgvIncidence} VEZES`;
   } else if (fgvIncidence >= 3) {
     fgvBadgeClass = "bg-[#F1C40F] text-slate-900";
-    fgvLabel = `IMPORTANTE - COBRADO ${fgvIncidence} VEZES`;
+    fgvLabel = `⚡ IMPORTANTE — COBRADO ${fgvIncidence} VEZES`;
   } else if (fgvIncidence > 0) {
     fgvBadgeClass = "bg-[#2ECC71] text-white";
     fgvLabel = `COBRADO ${fgvIncidence} VEZES`;
@@ -245,9 +227,9 @@ export function ArticleCard({ node, legislation }: { node: LawNode, legislation:
     <article ref={cardRef} id={`node-${node.id}`} className={cn(
       "bg-white border rounded-2xl p-6 md:p-8 shadow-sm mb-8 relative group transition-all duration-300",
       node.isRead ? "border-green-200 bg-green-50/20 opacity-80" : "border-slate-200 hover:shadow-md",
-      node.isFavorite ? "ring-2 ring-yellow-400 border-yellow-400" : "",
-      node.needsReview ? "outline outline-2 outline-rose-200" : ""
+      node.isFavorite ? "ring-2 ring-yellow-400 border-yellow-400" : ""
     )}>
+      
       {selectionBox && (
         <div 
           className="fixed z-50 bg-slate-900 text-white rounded-lg shadow-xl px-2 py-1.5 flex items-center gap-1 transform -translate-x-1/2 -translate-y-full mb-2"
@@ -263,15 +245,13 @@ export function ArticleCard({ node, legislation }: { node: LawNode, legislation:
         </div>
       )}
 
+      {/* Interaction Toolbar */}
       <div className="absolute -right-4 top-12 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
         <button onClick={() => toggleNodeProperty(node.id, 'isFavorite')} className={cn("w-10 h-10 rounded-full shadow-lg border flex items-center justify-center transition-colors", node.isFavorite ? "bg-yellow-400 text-white border-yellow-400" : "bg-white text-slate-400 border-slate-100 hover:bg-yellow-50")} title="Favoritar">
           <Bookmark size={18} />
         </button>
         <button onClick={() => toggleNodeProperty(node.id, 'isRead')} className={cn("w-10 h-10 rounded-full shadow-lg border flex items-center justify-center transition-colors", node.isRead ? "bg-green-500 text-white border-green-500" : "bg-white text-slate-400 border-slate-100 hover:bg-green-50")} title="Marcar como lido">
           <CheckCircle size={18} />
-        </button>
-        <button onClick={() => toggleNodeProperty(node.id, 'needsReview')} className={cn("w-10 h-10 rounded-full shadow-lg border flex items-center justify-center transition-colors", node.needsReview ? "bg-rose-500 text-white border-rose-500" : "bg-white text-slate-400 border-slate-100 hover:bg-rose-50")} title="Marcar para revisar depois">
-          <Highlighter size={18} />
         </button>
         <button onClick={() => toggleRightPanel(node.id)} className="w-10 h-10 rounded-full bg-slate-800 shadow-lg text-white flex items-center justify-center hover:bg-slate-700" title="Abrir Gaveta de Estudos">
           <BookOpen size={18} />
@@ -285,15 +265,9 @@ export function ArticleCard({ node, legislation }: { node: LawNode, legislation:
           </span>
         )}
 
-        {node.needsReview && (
-          <span className="px-2 py-1 bg-rose-50 text-rose-700 border border-rose-100 text-[9px] font-bold rounded uppercase tracking-tighter">
-            Revisar depois
-          </span>
-        )}
-
         {node.metadata?.novidade_legislativa && (
           <span className="px-2 py-1 bg-[#ccff00] text-slate-900 text-[9px] font-bold rounded uppercase tracking-tighter shadow-sm border border-green-200">
-            Novidade legislativa
+            ★ NOVIDADE LEGISLATIVA
           </span>
         )}
 
@@ -397,40 +371,16 @@ export function ArticleCard({ node, legislation }: { node: LawNode, legislation:
         {nodeAnnotations.length > 0 && (
           <div className="space-y-2">
             {nodeAnnotations.map(ann => (
-              <div key={ann.id} className="group relative bg-yellow-50 border border-yellow-100 rounded p-3 pr-16">
-                {editingAnnotationId === ann.id ? (
-                  <div>
-                    <textarea
-                      className="w-full bg-white border border-yellow-200 rounded p-2 text-sm focus:ring-2 focus:ring-indigo-600 outline-none resize-y min-h-[80px]"
-                      value={editingAnnotationContent}
-                      onChange={(e) => setEditingAnnotationContent(e.target.value)}
-                    />
-                    <div className="flex justify-end gap-2 mt-2">
-                      <button onClick={() => setEditingAnnotationId(null)} className="px-2 py-1 text-xs font-bold text-slate-500 hover:bg-yellow-100 rounded">Cancelar</button>
-                      <button onClick={saveEditingAnnotation} disabled={!editingAnnotationContent.trim()} className="px-2 py-1 text-xs font-bold bg-indigo-600 text-white rounded disabled:opacity-50">Salvar</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-sm font-serif italic text-slate-700">
-                     <ReactMarkdown>{ann.content}</ReactMarkdown>
-                  </div>
-                )}
-                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
-                    onClick={() => startEditingAnnotation(ann.id, ann.content)}
-                    className="p-1 text-yellow-500 hover:text-indigo-600"
-                    title="Editar anotação"
-                  >
-                    <Edit3 size={14} />
-                  </button>
-                  <button 
-                    onClick={() => deleteAnnotation(node.id, ann.id)}
-                    className="p-1 text-yellow-400 hover:text-red-500"
-                    title="Excluir anotação"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+              <div key={ann.id} className="group relative bg-yellow-50 border border-yellow-100 rounded p-3 pr-8">
+                <div className="text-sm font-serif italic text-slate-700">
+                   <ReactMarkdown>{ann.content}</ReactMarkdown>
                 </div>
+                <button 
+                  onClick={() => deleteAnnotation(node.id, ann.id)}
+                  className="absolute top-2 right-2 p-1 text-yellow-400 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity"
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
             ))}
           </div>
@@ -481,6 +431,7 @@ export function ArticleCard({ node, legislation }: { node: LawNode, legislation:
           </button>
         )}
       </div>
+
     </article>
   );
 }
