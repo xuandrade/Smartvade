@@ -1,27 +1,30 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../store/useStore';
-import { Brain, ArrowLeft, Check, X, TrendingUp, Calendar, Inbox, Search } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { ArticleCard } from './ArticleCard';
+import { Brain, ArrowLeft, Check, TrendingUp, Calendar, Inbox } from 'lucide-react';
+import { LawNode } from '../types';
+
+function formatReviewText(node: LawNode, depth = 0): string {
+  const indent = depth > 0 ? '  '.repeat(depth) : '';
+  const children = (node.children || []).map(child => formatReviewText(child, depth + 1));
+  return [indent + node.text, ...children].filter(Boolean).join('\n');
+}
 
 export function SRSReviewDeck() {
   const { srsTracking, setShowReviewMode, legislations, processSRSReview } = useStore();
   const [sessionActive, setSessionActive] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
   
-  // Compute SRS stats
   const now = Date.now();
   const allSrsNodes = Object.keys(srsTracking);
   
   const dueNodes = useMemo(() => {
     return allSrsNodes.filter(id => srsTracking[id].nextReviewDate <= now);
-  }, [srsTracking, now]);
+  }, [srsTracking, now, allSrsNodes]);
 
   const totalTracked = allSrsNodes.length;
   const learningPhase = allSrsNodes.filter(id => srsTracking[id].interval < 21).length;
   const graduatedPhase = totalTracked - learningPhase;
 
-  // Session state
   const [reviewQueue, setReviewQueue] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -34,26 +37,22 @@ export function SRSReviewDeck() {
 
   const currentReviewId = reviewQueue[currentIndex];
   
-  // Find the node data
   const currentNode = useMemo(() => {
     if (!currentReviewId) return null;
-    for (const leg of legislations) {
-      const found = leg.nodes.find(n => n.id === currentReviewId);
-      if (found) return { node: found, legislation: leg };
-      
-      // Deep search
-      const searchDeep = (nodes: any[]): any => {
-        for (const n of nodes) {
-          if (n.id === currentReviewId) return n;
-          if (n.children) {
-            const foundChild = searchDeep(n.children);
-            if (foundChild) return foundChild;
-          }
+    const searchDeep = (nodes: LawNode[]): LawNode | null => {
+      for (const n of nodes) {
+        if (n.id === currentReviewId) return n;
+        if (n.children) {
+          const foundChild = searchDeep(n.children);
+          if (foundChild) return foundChild;
         }
-        return null;
-      };
-      const deepFound = searchDeep(leg.nodes);
-      if (deepFound) return { node: deepFound, legislation: leg };
+      }
+      return null;
+    };
+
+    for (const leg of legislations) {
+      const found = searchDeep(leg.nodes);
+      if (found) return { node: found, legislation: leg };
     }
     return null;
   }, [currentReviewId, legislations]);
@@ -73,6 +72,8 @@ export function SRSReviewDeck() {
   };
 
   if (sessionActive && currentNode) {
+    const reviewText = formatReviewText(currentNode.node);
+
     return (
       <div className="flex-1 bg-slate-900 flex flex-col items-center justify-center p-4 relative w-full h-full">
         <button 
@@ -125,8 +126,7 @@ export function SRSReviewDeck() {
            ) : (
              <div className="mt-8">
                <div className="font-serif text-xl leading-relaxed text-slate-700 border-l-4 border-indigo-200 pl-6 mb-12 whitespace-pre-wrap">
-                 {currentNode.node.text}
-                 {/* Only showing text for simplicity in review, if they need more, they can see in vade mecum */}
+                 {reviewText}
                </div>
                
                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
