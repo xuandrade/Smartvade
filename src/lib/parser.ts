@@ -1,33 +1,8 @@
 import { LawNode, LawNodeType } from '../types';
 
-const ROMAN = '[IVXLCDM]+';
-const ARTICLE_REGEX = /^Art\.\s*\d+[A-Za-zº°]*(?:[-‑–][A-Za-z0-9]+)?/i;
-const PARAGRAPH_REGEX = /^(§\s*\d+[A-Za-zº°]*(?:[-‑–][A-Za-z0-9]+)?|Parágrafo\s+único)/i;
-const INCISO_REGEX = new RegExp(`^${ROMAN}\\s*[-–]`, 'i');
-const ALINEA_REGEX = /^[a-z]\)/i;
-
-function createNode(type: LawNodeType, label: string, text: string): LawNode {
-  return {
-    id: crypto.randomUUID(),
-    type,
-    label,
-    text,
-    children: []
-  };
-}
-
-function appendNode(parent: LawNode | null, roots: LawNode[], node: LawNode) {
-  if (parent) parent.children.push(node);
-  else roots.push(node);
-}
-
-function getHeadingLabel(line: string, prefix: string) {
-  const match = line.match(new RegExp(`^${prefix}\\s+${ROMAN}`, 'i'));
-  return match ? match[0] : line;
-}
-
 /**
- * Parses raw Brazilian legal text into a navigable tree while keeping the original line text intact.
+ * A simplified Regex-based parser to break raw law text into an AST (Abstract Syntax Tree).
+ * This maintains 100% fidelity to the original text while allowing structured navigation.
  */
 export function parseLaw(text: string): LawNode[] {
   const lines = text.split('\n').filter(line => line.trim().length > 0);
@@ -36,94 +11,151 @@ export function parseLaw(text: string): LawNode[] {
   let currentLivro: LawNode | null = null;
   let currentTitle: LawNode | null = null;
   let currentChapter: LawNode | null = null;
-  let currentSection: LawNode | null = null;
-  let currentSubsection: LawNode | null = null;
   let currentArticle: LawNode | null = null;
-  let currentParagraph: LawNode | null = null;
-  let currentInciso: LawNode | null = null;
   
   for (const line of lines) {
     const trimmed = line.trim();
     
-    if (new RegExp(`^LIVRO\\s+${ROMAN}`, 'i').test(trimmed)) {
-      const node = createNode('livro', getHeadingLabel(trimmed, 'LIVRO'), line);
+    // Livro
+    if (/^LIVRO\s+[IVXLCDM]+/i.test(trimmed)) {
+      const node: LawNode = {
+        id: crypto.randomUUID(),
+        type: 'livro',
+        label: trimmed, // keep full title
+        text: line,
+        children: []
+      };
       nodes.push(node);
       currentLivro = node;
       currentTitle = null;
       currentChapter = null;
-      currentSection = null;
-      currentSubsection = null;
       currentArticle = null;
-      currentParagraph = null;
-      currentInciso = null;
     }
-    else if (new RegExp(`^TÍTULO\\s+${ROMAN}`, 'i').test(trimmed)) {
-      const node = createNode('titulo', getHeadingLabel(trimmed, 'TÍTULO'), line);
-      appendNode(currentLivro, nodes, node);
+    // Título
+    else if (/^TÍTULO\s+[IVXLCDM]+/i.test(trimmed)) {
+      const node: LawNode = {
+        id: crypto.randomUUID(),
+        type: 'titulo',
+        label: trimmed,
+        text: line,
+        children: []
+      };
+      if (currentLivro) {
+        currentLivro.children.push(node);
+      } else {
+        nodes.push(node);
+      }
       currentTitle = node;
       currentChapter = null;
-      currentSection = null;
-      currentSubsection = null;
       currentArticle = null;
-      currentParagraph = null;
-      currentInciso = null;
     } 
-    else if (new RegExp(`^CAPÍTULO\\s+${ROMAN}`, 'i').test(trimmed)) {
-      const node = createNode('capitulo', getHeadingLabel(trimmed, 'CAPÍTULO'), line);
-      appendNode(currentTitle || currentLivro, nodes, node);
+    // Capítulo
+    else if (/^CAPÍTULO\s+[IVXLCDM]+/i.test(trimmed)) {
+      const node: LawNode = {
+        id: crypto.randomUUID(),
+        type: 'capitulo',
+        label: trimmed,
+        text: line,
+        children: []
+      };
+      if (currentTitle) {
+        currentTitle.children.push(node);
+      } else if (currentLivro) {
+        currentLivro.children.push(node);
+      } else {
+        nodes.push(node);
+      }
       currentChapter = node;
-      currentSection = null;
-      currentSubsection = null;
       currentArticle = null;
-      currentParagraph = null;
-      currentInciso = null;
     }
-    else if (new RegExp(`^SEÇÃO\\s+${ROMAN}`, 'i').test(trimmed)) {
-      const node = createNode('secao', getHeadingLabel(trimmed, 'SEÇÃO'), line);
-      appendNode(currentChapter || currentTitle || currentLivro, nodes, node);
-      currentSection = node;
-      currentSubsection = null;
-      currentArticle = null;
-      currentParagraph = null;
-      currentInciso = null;
-    }
-    else if (new RegExp(`^SUBSEÇÃO\\s+${ROMAN}`, 'i').test(trimmed)) {
-      const node = createNode('subsecao', getHeadingLabel(trimmed, 'SUBSEÇÃO'), line);
-      appendNode(currentSection || currentChapter || currentTitle || currentLivro, nodes, node);
-      currentSubsection = node;
-      currentArticle = null;
-      currentParagraph = null;
-      currentInciso = null;
-    }
-    else if (ARTICLE_REGEX.test(trimmed)) {
-      const articleMatch = trimmed.match(ARTICLE_REGEX);
-      const node = createNode('artigo', articleMatch ? articleMatch[0] : 'Art.', line);
-      appendNode(currentSubsection || currentSection || currentChapter || currentTitle || currentLivro, nodes, node);
+    // Article detection
+    else if (/^Art\.\s+\d+[a-zº]*/.test(trimmed)) {
+      const articleMatch = trimmed.match(/^Art\.\s+\d+[a-zº]*/);
+      
+      const node: LawNode = {
+        id: crypto.randomUUID(),
+        type: 'artigo',
+        label: articleMatch ? articleMatch[0] : 'Art.',
+        text: line,
+        children: []
+      };
+      
+      if (currentChapter) {
+        currentChapter.children.push(node);
+      } else if (currentTitle) {
+        currentTitle.children.push(node);
+      } else if (currentLivro) {
+        currentLivro.children.push(node);
+      } else {
+        nodes.push(node);
+      }
       currentArticle = node;
-      currentParagraph = null;
-      currentInciso = null;
     }
-    else if (PARAGRAPH_REGEX.test(trimmed)) {
-      const match = trimmed.match(PARAGRAPH_REGEX);
-      const node = createNode('paragrafo', match ? match[0] : '§', line);
-      appendNode(currentArticle, nodes, node);
-      currentParagraph = node;
-      currentInciso = null;
+    // Paragrafos, Incisos, Alineas
+    else if (/^(§\s*\d+[a-zº]*|Parágrafo único)/i.test(trimmed)) {
+      const match = trimmed.match(/^(§\s*\d+[a-zº]*|Parágrafo único)/i);
+      const node: LawNode = {
+        id: crypto.randomUUID(),
+        type: 'paragrafo',
+        label: match ? match[0] : '§',
+        text: line,
+        children: []
+      };
+      if (currentArticle) currentArticle.children.push(node);
+      else nodes.push(node); // Handle detached paragraphs gracefully
     }
-    else if (INCISO_REGEX.test(trimmed)) {
-      const match = trimmed.match(INCISO_REGEX);
-      const node = createNode('inciso', match ? match[0].replace(/[-–]/, '').trim() : 'Inciso', line);
-      appendNode(currentParagraph || currentArticle, nodes, node);
-      currentInciso = node;
+    else if (/^[IVXLCDM]+\s*-/.test(trimmed)) {
+      const match = trimmed.match(/^[IVXLCDM]+\s*-/);
+      const node: LawNode = {
+        id: crypto.randomUUID(),
+        type: 'inciso',
+        label: match ? match[0].replace('-', '').trim() : 'Inciso',
+        text: line,
+        children: []
+      };
+      if (currentArticle) currentArticle.children.push(node);
+      else nodes.push(node);
     }
-    else if (ALINEA_REGEX.test(trimmed)) {
-      const match = trimmed.match(ALINEA_REGEX);
-      const node = createNode('alinea', match ? match[0] : 'Alinea', line);
-      appendNode(currentInciso || currentParagraph || currentArticle, nodes, node);
+    else if (/^[a-z]\)/.test(trimmed)) {
+      const match = trimmed.match(/^[a-z]\)/);
+      const node: LawNode = {
+        id: crypto.randomUUID(),
+        type: 'alinea',
+        label: match ? match[0] : 'Alinea',
+        text: line,
+        children: []
+      };
+      if (currentArticle) {
+        // Find last inciso to attach to, or attach to article
+        const lastChild = currentArticle.children[currentArticle.children.length - 1];
+        if (lastChild && lastChild.type === 'inciso') {
+          lastChild.children.push(node);
+        } else {
+          currentArticle.children.push(node);
+        }
+      }
+      else nodes.push(node);
     }
     else {
-      const node = createNode('texto_puro', '', line);
-      appendNode(currentInciso || currentParagraph || currentArticle || currentSubsection || currentSection || currentChapter || currentTitle || currentLivro, nodes, node);
+      // Pure text block
+      const node: LawNode = {
+        id: crypto.randomUUID(),
+        type: 'texto_puro',
+        label: '',
+        text: line,
+        children: []
+      };
+      if (currentArticle) { 
+         currentArticle.children.push(node);
+      } else if (currentChapter) { 
+         currentChapter.children.push(node);
+      } else if (currentTitle) { 
+         currentTitle.children.push(node);
+      } else if (currentLivro) {
+         currentLivro.children.push(node);
+      } else { 
+         nodes.push(node);
+      }
     }
   }
   return nodes;
