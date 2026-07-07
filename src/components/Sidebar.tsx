@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { cn } from '../lib/utils';
 import { LawNode, ExamBoard } from '../types';
-import { Book, ChevronRight, Hash, Layers, Folder, Plus, ChevronDown, Trash2, Wand2 } from 'lucide-react';
+import { Book, ChevronRight, Hash, Layers, Folder, Plus, ChevronDown, Trash2, Wand2, Search, Highlighter } from 'lucide-react';
 
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const { 
@@ -15,7 +15,6 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
     setShowCreateModal
   } = useStore();
   
-  const currentLegislation = legislations.find(l => l.id === currentLegislationId);
   const [expandedTocs, setExpandedTocs] = useState<Record<string, boolean>>({});
 
   const toggleToc = (id: string, e: React.MouseEvent) => {
@@ -24,14 +23,13 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   };
 
   const renderNode = (node: LawNode, depth: number = 0) => {
-    // Show Livro, Titulo, Capitulo, Secao, Subsecao, Artigo
     if (!['livro', 'titulo', 'capitulo', 'secao', 'subsecao', 'artigo'].includes(node.type)) return null;
     
     let icon = <Hash size={12} className="text-gray-400" />;
     if (node.type === 'livro' || node.type === 'titulo') icon = <Book size={14} className="text-gray-600" />;
-    if (node.type === 'capitulo') icon = <Layers size={12} className="text-gray-500" />;
+    if (node.type === 'capitulo' || node.type === 'secao' || node.type === 'subsecao') icon = <Layers size={12} className="text-gray-500" />;
     
-    const isContainer = ['livro', 'titulo', 'capitulo', 'secao'].includes(node.type);
+    const isContainer = ['livro', 'titulo', 'capitulo', 'secao', 'subsecao'].includes(node.type);
 
     return (
       <div key={node.id} className="flex flex-col">
@@ -41,15 +39,14 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           className={cn(
             "flex items-center gap-2 py-1.5 px-3 hover:bg-slate-100 hover:text-indigo-600 rounded-md text-xs transition-colors cursor-pointer",
             depth === 0 ? "font-bold text-slate-700 uppercase tracking-tighter mt-2" : "text-slate-600",
-            depth === 1 ? "font-medium ml-2" : "",
-            depth === 2 ? "ml-4 opacity-90" : "",
-            depth > 2 ? `ml-${depth * 2 + 2} opacity-80` : ""
+            depth === 1 ? "font-medium" : "",
+            depth === 2 ? "opacity-90" : "",
+            depth > 2 ? "opacity-80" : ""
           )}
+          style={{ marginLeft: depth > 0 ? depth * 8 : 0 }}
         >
           {icon}
-          <span className="truncate" title={node.label}>{node.label}</span>
-          
-          {/* Badge Indicators for FGV if > 5 etc (we'd need incidence map, skipped here for performance in sidebar) */}
+          <span className="truncate" title={node.label || node.text}>{node.label || node.text}</span>
         </a>
         
         {isContainer && node.children && node.children.length > 0 && (
@@ -97,6 +94,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                    <button 
                      onClick={(e) => { e.stopPropagation(); deleteLegislation(leg.id); }}
                      className="opacity-0 group-hover:opacity-100 text-indigo-200 hover:text-white p-1"
+                     title="Excluir legislação"
                    >
                      <Trash2 size={14} />
                    </button>
@@ -104,6 +102,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                  <button 
                    onClick={(e) => toggleToc(leg.id, e)}
                    className={cn("p-1 rounded hover:bg-black/10", isActive ? "text-white" : "text-slate-400")}
+                   title={isExpanded ? "Recolher sumário" : "Expandir sumário"}
                  >
                    {isExpanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
                  </button>
@@ -126,11 +125,23 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         )}
       </nav>
       
-      {/* Filters Footer */}
       <div className="p-4 mt-auto border-t border-slate-200 bg-[#F9FAFB] shrink-0">
         <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Filtros Ativos</p>
         
         <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-xs">
+            <span className="font-semibold text-slate-600 uppercase tracking-tight flex items-center gap-1">
+              <Search size={12} className="text-indigo-600" /> Buscar no texto
+            </span>
+            <input
+              type="search"
+              value={filters.searchQuery}
+              onChange={(e) => setFilters({ searchQuery: e.target.value })}
+              placeholder="Artigo, termo, inciso..."
+              className="bg-white border border-slate-200 rounded p-1.5 text-xs text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+          </label>
+
           <label className="flex items-center justify-between text-xs cursor-pointer group">
             <span className="font-semibold text-slate-600 uppercase tracking-tight">Ocultar Lidos</span>
             <div className={cn("w-8 h-4 rounded-full transition-colors relative", filters.showRead === false ? "bg-indigo-600" : "bg-slate-300")}>
@@ -145,6 +156,14 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
               <div className={cn("absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full transition-transform shadow-sm", filters.showFavorites ? "translate-x-4" : "translate-x-0")} />
             </div>
             <input type="checkbox" className="hidden" checked={filters.showFavorites} onChange={() => setFilters({ showFavorites: !filters.showFavorites })} />
+          </label>
+
+          <label className="flex items-center justify-between text-xs cursor-pointer group">
+            <span className="font-semibold text-slate-600 uppercase tracking-tight text-rose-600 flex items-center gap-1"><Highlighter size={12} /> Revisar depois</span>
+            <div className={cn("w-8 h-4 rounded-full transition-colors relative", filters.showNeedsReview ? "bg-rose-500" : "bg-slate-300")}>
+              <div className={cn("absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full transition-transform shadow-sm", filters.showNeedsReview ? "translate-x-4" : "translate-x-0")} />
+            </div>
+            <input type="checkbox" className="hidden" checked={filters.showNeedsReview} onChange={() => setFilters({ showNeedsReview: !filters.showNeedsReview })} />
           </label>
 
           <div className="flex flex-col gap-1 mt-2">
@@ -169,7 +188,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
               min="0" 
               max="15" 
               value={filters.minIncidence} 
-              onChange={e => setFilters({ minIncidence: parseInt(e.target.value) })}
+              onChange={e => setFilters({ minIncidence: parseInt(e.target.value, 10) })}
               className="w-full"
             />
             <span className="text-[10px] text-slate-400 text-right">{filters.minIncidence === 0 ? 'Qualquer' : `>= ${filters.minIncidence} vezes`}</span>
@@ -184,7 +203,6 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
               placeholder="Ex: Prazos em green, verbos em bold..."
             />
           </div>
-
         </div>
       </div>
     </>
