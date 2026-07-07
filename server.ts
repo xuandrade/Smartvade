@@ -1,18 +1,18 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type, Schema } from '@google/genai';
 
-// Initialize Gemini SDK. AI Studio automatically injects GEMINI_API_KEY.
-const ai = new GoogleGenAI({});
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
 
-  app.use(express.json());
+  app.use(express.json({ limit: '5mb' }));
 
-  // Define API route for Gemini Enrichemnt
   app.post('/api/enrich', async (req, res) => {
     try {
       const { text } = req.body;
@@ -35,7 +35,7 @@ async function startServer() {
       };
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+        model: GEMINI_MODEL,
         contents: `Analise o seguinte dispositivo legal e extraia os metadados solicitados: \n\n"${text}"`,
         config: {
           responseMimeType: 'application/json',
@@ -65,7 +65,7 @@ async function startServer() {
       }
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+        model: GEMINI_MODEL,
         contents: `Analise o seguinte dispositivo legal e gere um mapa mental hierárquico estruturado em JSON para facilitar o estudo e memorização. 
 O JSON deve ter este formato (onde children é opcional):
 {
@@ -117,7 +117,7 @@ Dispositivo legal:
       };
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+        model: GEMINI_MODEL,
         contents: `Baseado na REGRA DE CORES abaixo, identifique os trechos do TEXTO LEGAL que devem ser formatados e grifados.
 Retorne EXATAMENTE os trechos do texto original, sem NENHUMA alteração, para que possamos fazer um "match" perfeito.
 Selecione as cores estritamente de acordo com a regra do usuário.
@@ -147,7 +147,6 @@ TEXTO LEGAL:
     }
   });
 
-  // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

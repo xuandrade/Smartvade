@@ -23,9 +23,14 @@ export function CreateLegislationModal() {
       const map: Record<string, number> = {};
       const lines = raw.split('\n');
       for (const line of lines) {
-        const match = line.match(/Art\.\s*(\d+).*?(\d+)/i);
+        const match = line.match(/(Art\.\s*\d+[A-Za-zº°]*(?:[-‑–][A-Za-z0-9]+)?).*?(\d+)\s*(?:vez|vezes|x)?\s*$/i);
         if (match) {
-           map[`Art. ${match[1]}`] = parseInt(match[2], 10);
+           const key = match[1].replace(/\s+/g, ' ').trim();
+           const count = parseInt(match[2], 10);
+           const numericFallback = key.match(/\d+/)?.[0];
+
+           map[key] = count;
+           if (numericFallback) map[`Art. ${numericFallback}`] = count;
         }
       }
       return map;
@@ -54,7 +59,7 @@ Pena - reclusão, de seis a vinte anos.
 Homicídio culposo
 § 3º Se o homicídio é culposo:
 Pena - detenção, de um a três anos.`);
-    setFgvText(`Art. 121 - 8 vezes\nArt. 1 - 5 vezes\nArt. 2 - 2 vezes`);
+    setFgvText(`Art. 121 - 8 vezes\nArt. 1º - 5 vezes\nArt. 2º - 2 vezes`);
     setFccText(`Art. 121 - 10 vezes`);
   };
 
@@ -113,10 +118,10 @@ Pena - detenção, de um a três anos.`);
 
             <p className="text-xs text-indigo-600 mb-3 font-medium">Cole a lista de cobranças para a banca {activeTab}. Ex: "Art. 121 - 5 vezes".</p>
             
-            {activeTab === 'FGV' && <textarea className="w-full h-24 border border-indigo-200 bg-white rounded-lg p-3 font-mono text-xs focus:ring-1 focus:ring-indigo-600 outline-none" placeholder="Art. 5 - 12 vezes..." value={fgvText} onChange={e => setFgvText(e.target.value)} />}
-            {activeTab === 'FCC' && <textarea className="w-full h-24 border border-indigo-200 bg-white rounded-lg p-3 font-mono text-xs focus:ring-1 focus:ring-indigo-600 outline-none" placeholder="Art. 5 - 12 vezes..." value={fccText} onChange={e => setFccText(e.target.value)} />}
-            {activeTab === 'CEBRASPE' && <textarea className="w-full h-24 border border-indigo-200 bg-white rounded-lg p-3 font-mono text-xs focus:ring-1 focus:ring-indigo-600 outline-none" placeholder="Art. 5 - 12 vezes..." value={cebraspeText} onChange={e => setCebraspeText(e.target.value)} />}
-            {activeTab === 'PRÓPRIA' && <textarea className="w-full h-24 border border-indigo-200 bg-white rounded-lg p-3 font-mono text-xs focus:ring-1 focus:ring-indigo-600 outline-none" placeholder="Art. 5 - 12 vezes..." value={propriaText} onChange={e => setPropriaText(e.target.value)} />}
+            {activeTab === 'FGV' && <textarea className="w-full h-24 border border-indigo-200 bg-white rounded-lg p-3 font-mono text-xs focus:ring-1 focus:ring-indigo-600 outline-none" placeholder="Art. 5º-A - 12 vezes..." value={fgvText} onChange={e => setFgvText(e.target.value)} />}
+            {activeTab === 'FCC' && <textarea className="w-full h-24 border border-indigo-200 bg-white rounded-lg p-3 font-mono text-xs focus:ring-1 focus:ring-indigo-600 outline-none" placeholder="Art. 5º-A - 12 vezes..." value={fccText} onChange={e => setFccText(e.target.value)} />}
+            {activeTab === 'CEBRASPE' && <textarea className="w-full h-24 border border-indigo-200 bg-white rounded-lg p-3 font-mono text-xs focus:ring-1 focus:ring-indigo-600 outline-none" placeholder="Art. 5º-A - 12 vezes..." value={cebraspeText} onChange={e => setCebraspeText(e.target.value)} />}
+            {activeTab === 'PRÓPRIA' && <textarea className="w-full h-24 border border-indigo-200 bg-white rounded-lg p-3 font-mono text-xs focus:ring-1 focus:ring-indigo-600 outline-none" placeholder="Art. 5º-A - 12 vezes..." value={propriaText} onChange={e => setPropriaText(e.target.value)} />}
           </div>
 
         </div>
