@@ -1,193 +1,72 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { LawNode, Legislation } from '../types';
-import { processHighlights, UserHighlightDef } from '../lib/highlighter';
+import { processHighlights } from '../lib/highlighter';
 import { cn } from '../lib/utils';
-import { Sparkles, MessageSquare, BookOpen, Bookmark, CheckCircle, Edit3, Trash2, X, Highlighter, Bold, Underline, Network, Brain, Wand2 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import { MindMapView } from './MindMapView';
+import { MessageSquare, Bookmark, CheckCircle, Trash2, Brain, Tag, Edit3 } from 'lucide-react';
+import { ArticleTagsPopover } from './ArticleTagsPopover';
+import { RichNoteEditor } from './RichNoteEditor';
+import { EditModeMenu } from './EditModeMenu';
 
-export function ArticleCard({ node, legislation }: { node: LawNode, legislation: Legislation }) {
-  const { 
-    setMetadata, 
-    annotations, 
-    addAnnotation, 
-    deleteAnnotation, 
-    filters, 
-    toggleNodeProperty, 
-    toggleRightPanel,
-    highlights,
-    addHighlight,
-    srsTracking,
-    addToSRS,
-    removeFromSRS
-  } = useStore();
+const EMPTY_ARR: any[] = [];
+
+const ArticleCardComponent = ({ node, legislation }: { node: LawNode, legislation: Legislation }) => {
+  const nodeAnnotations = useStore(state => state.annotations[node.id] || EMPTY_ARR);
+  const nodeHighlights = useStore(state => state.highlights[node.id] || EMPTY_ARR);
+  const isSrs = useStore(state => !!state.srsTracking[node.id]);
+  const nodeTags = useStore(state => state.articleTags[node.id] || EMPTY_ARR);
+  const personalTags = useStore(state => state.personalTags);
+  const editMode = useStore(state => state.editMode);
   
-  const [loadingAi, setLoadingAi] = useState(false);
-  const [loadingMap, setLoadingMap] = useState(false);
-  const [loadingHighlight, setLoadingHighlight] = useState(false);
+  const addAnnotation = useStore(state => state.addAnnotation);
+  const deleteAnnotation = useStore(state => state.deleteAnnotation);
+  const updateAnnotation = useStore(state => state.updateAnnotation);
+  const toggleNodeProperty = useStore(state => state.toggleNodeProperty);
+  const addToSRS = useStore(state => state.addToSRS);
+  const removeFromSRS = useStore(state => state.removeFromSRS);
+  
   const [showAnnotationForm, setShowAnnotationForm] = useState(false);
   const [newAnnotation, setNewAnnotation] = useState('');
-  
-  const [selectionBox, setSelectionBox] = useState<{x: number, y: number, text: string} | null>(null);
-  const cardRef = useRef<HTMLElement>(null);
+  const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState('');
+  const [showTagsPopover, setShowTagsPopover] = useState(false);
+  const [fontSize, setFontSize] = useState(1);
 
-  const nodeAnnotations = annotations[node.id] || [];
-  const nodeHighlights = highlights[node.id] || [];
-
-  const handleAutoHighlight = async () => {
-    setLoadingHighlight(true);
-    try {
-      const fullText = [node.text, ...node.children.map(c => c.text)].join('\n');
-      
-      const res = await fetch('/api/autohighlight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          text: fullText,
-          rule: filters.colorCodeConfig
-        })
-      });
-      
-      if (!res.ok) throw new Error('API failed');
-      
-      const data = await res.json();
-      if (data && Array.isArray(data)) {
-        useStore.getState().addHighlightsBatch(
-          node.id, 
-          data.map((h: any) => ({ nodeId: node.id, textStr: h.textStr, color: h.color }))
-        );
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Falha ao gerar grifos automáticos. Tente novamente.");
-    } finally {
-      setLoadingHighlight(false);
-    }
-  };
-  
-  let fgvIncidence = 0;
-  const matchNum = node.label.match(/\d+/);
-  if (matchNum) {
-     const numStr = matchNum[0];
-     const incMap = filters.board === 'ALL' 
-        ? Object.values(legislation.incidences).reduce((acc, curr) => {
-            acc += (curr[`Art. ${numStr}`] || 0);
-            return acc;
-          }, 0)
-        : legislation.incidences[filters.board]?.[`Art. ${numStr}`] || 0;
-     fgvIncidence = incMap;
-  }
-  
-  if (fgvIncidence < filters.minIncidence) return null;
-  if (filters.showFavorites && !node.isFavorite) return null;
-  if (filters.showRead === true && !node.isRead) return null;
-  if (filters.showRead === false && node.isRead) return null;
-
-  useEffect(() => {
-    const handleMouseUp = () => {
-      const selection = window.getSelection();
-      if (selection && !selection.isCollapsed && cardRef.current?.contains(selection.anchorNode)) {
-        const text = selection.toString().trim();
-        if (text.length > 0) {
-          const range = selection.getRangeAt(0);
-          const rect = range.getBoundingClientRect();
-          setSelectionBox({
-            x: rect.left + rect.width / 2,
-            y: rect.top - 10,
-            text
-          });
-        }
-      } else {
-        setTimeout(() => setSelectionBox(null), 150);
-      }
-    };
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => document.removeEventListener('mouseup', handleMouseUp);
-  }, []);
-
-  const handleApplyHighlight = (color: any) => {
-    if (selectionBox) {
-      addHighlight(node.id, { nodeId: node.id, textStr: selectionBox.text, color });
-      window.getSelection()?.removeAllRanges();
-      setSelectionBox(null);
-    }
+  const handleAddAnnotation = () => {
+    if (!newAnnotation.trim()) return;
+    addAnnotation(node.id, newAnnotation);
+    setNewAnnotation('');
+    setShowAnnotationForm(false);
   };
 
-  const handleEnrich = async () => {
-    setLoadingAi(true);
-    try {
-      const fullText = [node.text, ...node.children.map(c => c.text)].join(' ');
-      
-      const res = await fetch('/api/enrich', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: fullText })
-      });
-      
-      if (!res.ok) throw new Error('API failed');
-      
-      const data = await res.json();
-      setMetadata(node.id, { ...node.metadata, ...data });
-    } catch (e) {
-      console.error(e);
-      setMetadata(node.id, {
-        ...node.metadata,
-        termo_nucleo: 'Conceito Indisponível',
-        verbos_nucleares: ['falha', 'sistema'],
-        alertas_fgv: 'Não foi possível conectar à IA no momento.'
-      });
-    } finally {
-      setLoadingAi(false);
-    }
+  const handleUpdateAnnotation = () => {
+    if (!editingAnnotationId || !editingContent.trim()) return;
+    updateAnnotation(node.id, editingAnnotationId, editingContent);
+    setEditingAnnotationId(null);
+    setEditingContent('');
   };
 
-  const handleGenerateMap = async () => {
-    setLoadingMap(true);
-    try {
-      const fullText = [node.text, ...node.children.map(c => c.text)].join(' ');
-      
-      const res = await fetch('/api/mindmap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: fullText })
-      });
-      
-      if (!res.ok) throw new Error('API failed');
-      
-      const data = await res.json();
-      setMetadata(node.id, { ...node.metadata, mapa_mental: data });
-    } catch (e) {
-      console.error(e);
-      setMetadata(node.id, {
-        ...node.metadata,
-        mapa_mental: { name: 'Falha ao gerar mapa mental' }
-      });
-    } finally {
-      setLoadingMap(false);
-    }
+  const removeAnnotation = (nodeId: string, annId: string) => {
+    deleteAnnotation(nodeId, annId);
   };
 
-  const renderText = (text: string) => {
-    const userHighs: UserHighlightDef[] = nodeHighlights.map(h => ({
-       textStr: h.textStr,
-       color: h.color
-    }));
-    const segments = processHighlights(
-      text, 
-      node.metadata?.verbos_nucleares || [], 
-      node.metadata?.palavras_chave || [],
-      userHighs
-    );
-    return (
-      <>
-        {segments.map((seg, i) => (
-          <span key={i} className={cn(seg.classes)}>
-            {seg.text}{seg.emoji}
-          </span>
-        ))}
-      </>
-    );
+  const renderText = (text: string, nodeId: string) => {
+    // We only pass user highlights. AI verbs and keywords are no longer processed automatically,
+    // as per the cleanup request (IA de auto-grifo, grifos automáticos).
+    const segments = processHighlights(text, [], [], nodeHighlights);
+    
+    return segments.map((seg, idx) => {
+      const isRevoked = seg.classes.includes('line-through'); // Ensure revoked elements still work with strikethrough
+      return (
+        <span 
+          key={idx} 
+          className={cn(seg.classes.join(' '))}
+          style={seg.style}
+        >
+          {seg.text}{seg.emoji}
+        </span>
+      );
+    });
   };
 
   const renderInner = (children: LawNode[]) => {
@@ -195,243 +74,225 @@ export function ArticleCard({ node, legislation }: { node: LawNode, legislation:
       const isRevoked = child.text.toLowerCase().includes('revogado');
       
       return (
-        <div key={child.id} className={cn(
-          "mt-4 text-lg font-serif pl-8 border-l-2 border-slate-100",
-          isRevoked ? "text-slate-300 line-through opacity-50" : "text-slate-700"
-        )}>
+        <div 
+          key={child.id} 
+          data-node-id={child.id}
+          className={cn(
+            "mt-4 text-lg font-sans pl-8 border-l-2 border-cyan-500/10 relative transition-all group/child",
+            isRevoked ? "text-slate-300 line-through opacity-50" : "text-slate-700 hover:bg-cyan-50/20 rounded-r-2xl"
+          )}
+        >
+           {child.heading && (
+             <div className="mb-2 text-base font-serif font-extrabold text-indigo-600/90 tracking-tight">
+               {child.heading}
+             </div>
+           )}
            <span className="font-sans font-bold text-xs text-slate-400 mr-2">{child.label}</span>
-           {renderText(child.text.replace(new RegExp(`^${child.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`), ''))}
-           {child.children && child.children.length > 0 && renderInner(child.children)}
+           {renderText(child.text.replace(new RegExp(`^${child.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`), ''), child.id)}
         </div>
       );
     });
   };
 
-  let fgvBadgeClass = "";
-  let fgvLabel = "";
-  if (fgvIncidence > 6) {
-    fgvBadgeClass = "bg-[#C0392B] text-white";
-    fgvLabel = `🔥 ESSENCIAL — COBRADO ${fgvIncidence} VEZES`;
-  } else if (fgvIncidence >= 5) {
-    fgvBadgeClass = "bg-[#E67E22] text-white";
-    fgvLabel = `⚠️ MUITO IMPORTANTE — COBRADO ${fgvIncidence} VEZES`;
-  } else if (fgvIncidence >= 3) {
-    fgvBadgeClass = "bg-[#F1C40F] text-slate-900";
-    fgvLabel = `⚡ IMPORTANTE — COBRADO ${fgvIncidence} VEZES`;
-  } else if (fgvIncidence > 0) {
-    fgvBadgeClass = "bg-[#2ECC71] text-white";
-    fgvLabel = `COBRADO ${fgvIncidence} VEZES`;
-  }
+  const isCaputRevoked = node.text.toLowerCase().includes('revogado');
 
   return (
-    <article ref={cardRef} id={`node-${node.id}`} className={cn(
-      "bg-white border rounded-2xl p-6 md:p-8 shadow-sm mb-8 relative group transition-all duration-300",
-      node.isRead ? "border-green-200 bg-green-50/20 opacity-80" : "border-slate-200 hover:shadow-md",
-      node.isFavorite ? "ring-2 ring-yellow-400 border-yellow-400" : ""
-    )}>
-      
-      {selectionBox && (
-        <div 
-          className="fixed z-50 bg-slate-900 text-white rounded-lg shadow-xl px-2 py-1.5 flex items-center gap-1 transform -translate-x-1/2 -translate-y-full mb-2"
-          style={{ left: selectionBox.x, top: selectionBox.y }}
-        >
-          <button onClick={(e) => { e.stopPropagation(); handleApplyHighlight('yellow'); }} className="w-6 h-6 rounded-full bg-yellow-400 hover:scale-110 transition-transform" />
-          <button onClick={(e) => { e.stopPropagation(); handleApplyHighlight('green'); }} className="w-6 h-6 rounded-full bg-green-400 hover:scale-110 transition-transform" />
-          <button onClick={(e) => { e.stopPropagation(); handleApplyHighlight('pink'); }} className="w-6 h-6 rounded-full bg-pink-400 hover:scale-110 transition-transform" />
-          <button onClick={(e) => { e.stopPropagation(); handleApplyHighlight('blue'); }} className="w-6 h-6 rounded-full bg-blue-400 hover:scale-110 transition-transform" />
-          <div className="w-px h-4 bg-slate-700 mx-1"></div>
-          <button onClick={(e) => { e.stopPropagation(); handleApplyHighlight('bold'); }} className="w-6 h-6 flex items-center justify-center hover:bg-slate-700 rounded"><Bold size={14}/></button>
-          <button onClick={(e) => { e.stopPropagation(); handleApplyHighlight('underline'); }} className="w-6 h-6 flex items-center justify-center hover:bg-slate-700 rounded"><Underline size={14}/></button>
-        </div>
+    <article 
+      id={`node-${node.id}`} 
+      className={cn(
+        "bg-white/90 backdrop-blur-md rounded-3xl p-6 md:p-8 mb-6 transition-all duration-300 relative group scroll-mt-24 border border-cyan-500/10 hover:border-cyan-500/30",
+        node.isRead 
+          ? "opacity-75 shadow-[0_4px_15px_-3px_rgba(148,163,184,0.05)] border-slate-200/50" 
+          : "shadow-[0_10px_30px_rgba(6,182,212,0.04)] hover:shadow-[0_15px_35px_rgba(6,182,212,0.08)]",
+        node.isFavorite ? "ring-2 ring-amber-400/30 border-amber-300 bg-amber-50/10 shadow-[0_0_20px_rgba(245,158,11,0.05)]" : "",
+        node.legislativeUpdate ? "border-l-[6px] border-l-emerald-300" : ""
       )}
-
-      {/* Interaction Toolbar */}
-      <div className="absolute -right-4 top-12 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-        <button onClick={() => toggleNodeProperty(node.id, 'isFavorite')} className={cn("w-10 h-10 rounded-full shadow-lg border flex items-center justify-center transition-colors", node.isFavorite ? "bg-yellow-400 text-white border-yellow-400" : "bg-white text-slate-400 border-slate-100 hover:bg-yellow-50")} title="Favoritar">
-          <Bookmark size={18} />
-        </button>
-        <button onClick={() => toggleNodeProperty(node.id, 'isRead')} className={cn("w-10 h-10 rounded-full shadow-lg border flex items-center justify-center transition-colors", node.isRead ? "bg-green-500 text-white border-green-500" : "bg-white text-slate-400 border-slate-100 hover:bg-green-50")} title="Marcar como lido">
-          <CheckCircle size={18} />
-        </button>
-        <button onClick={() => toggleRightPanel(node.id)} className="w-10 h-10 rounded-full bg-slate-800 shadow-lg text-white flex items-center justify-center hover:bg-slate-700" title="Abrir Gaveta de Estudos">
-          <BookOpen size={18} />
-        </button>
-      </div>
-
-      <div className="flex flex-wrap gap-2 mb-4">
-        {fgvIncidence > 0 && (
-          <span className={cn("px-2 py-1 text-[9px] font-bold rounded uppercase tracking-tighter italic", fgvBadgeClass)}>
-            {fgvLabel}
-          </span>
-        )}
-
-        {node.metadata?.novidade_legislativa && (
-          <span className="px-2 py-1 bg-[#ccff00] text-slate-900 text-[9px] font-bold rounded uppercase tracking-tighter shadow-sm border border-green-200">
-            ★ NOVIDADE LEGISLATIVA
-          </span>
-        )}
-
-        {node.metadata?.termo_nucleo && (
-          <span className="px-2 py-1 bg-slate-100 text-slate-600 text-[9px] font-bold rounded uppercase tracking-tighter border border-slate-200">
-            {node.metadata.termo_nucleo}
-          </span>
-        )}
-
-        {node.metadata?.nome_crime && (
-          <span className="px-2 py-1 bg-red-100 text-red-800 border border-red-200 text-[9px] font-bold rounded uppercase tracking-tighter">
-            CRIME: {node.metadata.nome_crime}
-          </span>
-        )}
-
-        {node.metadata?.principio && (
-          <span className="px-2 py-1 bg-blue-100 text-blue-800 border border-blue-200 text-[9px] font-bold rounded uppercase tracking-tighter">
-            PRINCÍPIO: {node.metadata.principio}
-          </span>
-        )}
-      </div>
-
-      <div className="font-serif text-xl leading-relaxed text-slate-800 border-l-4 border-slate-100 pl-4 md:pl-6">
-        {renderText(node.text)}
-      </div>
-      
-      {node.children && node.children.length > 0 && (
-        <div className="mt-6">
-          {renderInner(node.children)}
-        </div>
-      )}
-
-      {node.metadata && (
-        <div className="mt-8 space-y-2">
-          {node.metadata.verbos_nucleares && node.metadata.verbos_nucleares.length > 0 && (
-            <div className="border border-slate-100 rounded-lg p-3 bg-slate-50 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-600">Ação Principal: {node.metadata.verbos_nucleares.map(v => v.toUpperCase()).join(', ')}</span>
-            </div>
-          )}
-          {node.metadata.alertas_fgv && (
-            <div className="border border-amber-100 rounded-lg p-3 bg-amber-50 flex items-start gap-2">
-              <span className="text-sm font-medium text-amber-900">{node.metadata.alertas_fgv}</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {node.metadata?.mapa_mental && (
-        <div className="mt-8">
-           <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-2">
-             <Network size={16} className="text-indigo-600" /> Mapa Mental
-           </h4>
-           <MindMapView data={node.metadata.mapa_mental} />
-        </div>
-      )}
-
-      <div className="mt-6 pt-6 border-t border-dashed border-slate-200">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-xs">✏️</span>
-          <h4 className="text-sm font-bold text-slate-700">Anotações</h4>
-          <button 
-            onClick={() => setShowAnnotationForm(!showAnnotationForm)}
-            className="ml-auto text-xs font-bold text-indigo-600 hover:text-indigo-800 uppercase"
-          >
-            + Adicionar
-          </button>
-        </div>
-
-        {showAnnotationForm && (
-          <div className="mb-4">
-            <textarea
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-600 outline-none resize-y min-h-[80px]"
-              placeholder="Suas notas, esquemas, palavras-chave..."
-              value={newAnnotation}
-              onChange={(e) => setNewAnnotation(e.target.value)}
-            />
-            <div className="flex justify-end gap-2 mt-2">
-              <button 
-                onClick={() => setShowAnnotationForm(false)}
-                className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded"
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={() => {
-                  if (newAnnotation.trim()) {
-                    addAnnotation(node.id, newAnnotation);
-                    setNewAnnotation('');
-                    setShowAnnotationForm(false);
-                  }
-                }}
-                disabled={!newAnnotation.trim()}
-                className="px-3 py-1.5 text-xs font-bold bg-indigo-600 text-white rounded disabled:opacity-50"
-              >
-                Salvar
-              </button>
-            </div>
+    >
+      <div className="flex flex-col md:flex-row gap-6">
+        <div className="flex-1 min-w-0" data-node-id={node.id}>
+          <div className="flex items-center gap-3 mb-4 flex-wrap pr-8">
+            {editMode && (
+              <div className="mr-1">
+                <EditModeMenu node={node} legislation={legislation} />
+              </div>
+            )}
+            <span className="px-3 py-1 bg-cyan-50 border border-cyan-100 text-cyan-600 rounded-full text-[10px] font-extrabold uppercase tracking-wider shadow-sm">
+              {node.label}
+            </span>
+            {node.isFavorite && (
+              <span className="text-xs font-bold text-amber-500 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-full">Favorito</span>
+            )}
+            {isSrs && (
+               <span className="text-xs font-bold text-indigo-500 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full animate-pulse shadow-[0_0_10px_rgba(99,102,241,0.15)]">Em Revisão</span>
+            )}
+            {nodeTags.map(tId => {
+               const tag = personalTags.find(t => t.id === tId);
+               if (!tag) return null;
+               const colorMap: Record<string, string> = { blue: 'bg-blue-100 text-blue-700', rose: 'bg-rose-100 text-rose-700', green: 'bg-green-100 text-green-700', amber: 'bg-amber-100 text-amber-700', purple: 'bg-purple-100 text-purple-700', sky: 'bg-sky-100 text-sky-700', emerald: 'bg-emerald-100 text-emerald-700', stone: 'bg-stone-100 text-stone-700' };
+               return (
+                 <span key={tag.id} className={cn("text-xs font-bold px-2 py-1 rounded", colorMap[tag.color] || 'bg-stone-100 text-stone-700')}>
+                    {tag.name}
+                 </span>
+               );
+            })}
+            
+            {node.legislativeUpdate && (
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
+                 🆕 {node.legislativeUpdate.normType === 'EC' || node.legislativeUpdate.normType === 'Emenda Constitucional' ? 'EC' : (node.legislativeUpdate.normType || 'Lei')} {node.legislativeUpdate.law}/{node.legislativeUpdate.year}
+              </span>
+            )}
           </div>
-        )}
+          
+          {node.heading && (
+            <div className="mb-3 text-base md:text-lg font-serif font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 to-indigo-600 tracking-tight">
+              {node.heading}
+            </div>
+          )}
+          
+          <div className={cn(
+             "text-xl md:text-2xl font-serif leading-relaxed tracking-tight text-slate-800",
+             isCaputRevoked ? "line-through text-slate-400 opacity-60" : "",
+             fontSize === 0 ? "text-lg" : fontSize === 1 ? "text-xl md:text-2xl" : fontSize === 2 ? "text-2xl md:text-3xl" : "text-3xl md:text-4xl"
+          )}>
+            {renderText(node.text.replace(new RegExp(`^${node.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`), ''), node.id)}
+          </div>
+          
+          {node.children && node.children.length > 0 && (
+            <div className="mt-6 flex flex-col gap-2">
+              {renderInner(node.children)}
+            </div>
+          )}
+          
+          {(nodeAnnotations.length > 0 || showAnnotationForm) && (
+            <div className="mt-8 pt-6 border-t border-stone-100">
+              <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                <MessageSquare size={12} /> Anotações ({nodeAnnotations.length})
+              </h4>
+              <div className="space-y-3">
+                {nodeAnnotations.map(ann => (
+                  <div key={ann.id} className="bg-stone-50 rounded-xl p-4 border border-stone-100 relative group/ann">
+                    {editingAnnotationId === ann.id ? (
+                      <div>
+                        <RichNoteEditor initialContent={editingContent} onChange={setEditingContent} />
+                        <div className="flex justify-end gap-2 mt-2">
+                          <button 
+                            onClick={() => { setEditingAnnotationId(null); setEditingContent(''); }}
+                            className="px-4 py-2 text-sm font-semibold text-stone-500 hover:bg-stone-100 rounded-xl transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                          <button 
+                            onClick={handleUpdateAnnotation}
+                            disabled={!editingContent.trim() || editingContent === '<p></p>'}
+                            className="px-4 py-2 text-sm font-semibold bg-stone-900 text-white rounded-xl hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                          >
+                            Salvar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div dangerouslySetInnerHTML={{ __html: ann.content }} className="prose prose-sm max-w-none text-stone-700" />
+                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover/ann:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => { setEditingAnnotationId(ann.id); setEditingContent(ann.content); }}
+                            className="p-1.5 bg-white rounded shadow-sm text-stone-400 hover:text-cyan-500 transition-colors"
+                            title="Editar Anotação"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          <button 
+                            onClick={() => removeAnnotation(node.id, ann.id)}
+                            className="p-1.5 bg-white rounded shadow-sm text-stone-400 hover:text-red-500 transition-colors"
+                            title="Excluir Anotação"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-        {nodeAnnotations.length > 0 && (
-          <div className="space-y-2">
-            {nodeAnnotations.map(ann => (
-              <div key={ann.id} className="group relative bg-yellow-50 border border-yellow-100 rounded p-3 pr-8">
-                <div className="text-sm font-serif italic text-slate-700">
-                   <ReactMarkdown>{ann.content}</ReactMarkdown>
-                </div>
+          {showAnnotationForm && (
+            <div className="mt-6">
+              <RichNoteEditor initialContent={newAnnotation} onChange={setNewAnnotation} />
+              <div className="flex justify-end gap-2 mt-2">
                 <button 
-                  onClick={() => deleteAnnotation(node.id, ann.id)}
-                  className="absolute top-2 right-2 p-1 text-yellow-400 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity"
+                  onClick={() => setShowAnnotationForm(false)}
+                  className="px-4 py-2 text-sm font-semibold text-stone-500 hover:bg-stone-100 rounded-xl transition-colors"
                 >
-                  <Trash2 size={14} />
+                  Cancelar
+                </button>
+                <button 
+                  onClick={handleAddAnnotation}
+                  disabled={!newAnnotation.trim() || newAnnotation === '<p></p>'}
+                  className="px-4 py-2 text-sm font-semibold bg-stone-900 text-white rounded-xl hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                >
+                  Salvar
                 </button>
               </div>
-            ))}
+            </div>
+          )}
+
+          {!showAnnotationForm && (
+            <button 
+              onClick={() => setShowAnnotationForm(true)}
+              className="mt-6 text-sm font-semibold text-blush-500 hover:text-blush-600 flex items-center gap-1.5 transition-colors"
+            >
+              <MessageSquare size={14} /> Adicionar Anotação
+            </button>
+          )}
+
+        </div>
+
+        {/* Action Panel */}
+        <div className="shrink-0 flex flex-row md:flex-col gap-2.5 items-center md:border-l border-cyan-500/10 md:pl-6 w-full md:w-auto pt-4 md:pt-0 border-t md:border-t-0 mt-4 md:mt-0 overflow-x-auto">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden md:block mb-2">Ações</span>
+          
+          <button onClick={() => setFontSize(Math.max(0, fontSize - 1))} className="w-10 h-10 rounded-full shadow-sm border border-slate-200 bg-white text-slate-500 flex items-center justify-center hover:border-cyan-400 hover:text-cyan-600 hover:bg-slate-50 hover:shadow-[0_0_10px_rgba(6,182,212,0.15)] transition-all" title="Diminuir Fonte">
+            <span className="text-sm font-bold">A-</span>
+          </button>
+          <button onClick={() => setFontSize(Math.min(3, fontSize + 1))} className="w-10 h-10 rounded-full shadow-sm border border-slate-200 bg-white text-slate-500 flex items-center justify-center hover:border-cyan-400 hover:text-cyan-600 hover:bg-slate-50 hover:shadow-[0_0_10px_rgba(6,182,212,0.15)] transition-all" title="Aumentar Fonte">
+            <span className="text-lg font-bold">A+</span>
+          </button>
+                    <div className="w-px h-8 md:w-8 md:h-px bg-slate-200 hidden md:block my-2"></div>
+          
+          <div className="relative">
+             <button onClick={() => setShowTagsPopover(!showTagsPopover)} className={cn("w-10 h-10 rounded-full shadow-sm border flex items-center justify-center transition-all", nodeTags.length > 0 ? "bg-slate-800 text-white border-slate-800 shadow-[0_4px_12px_rgba(15,23,42,0.15)]" : "bg-white text-slate-400 border-slate-200 hover:border-cyan-400 hover:text-cyan-600 hover:bg-slate-50 hover:shadow-[0_0_10px_rgba(6,182,212,0.15)]")} title="Tags">
+               <Tag size={16} />
+             </button>
+             {showTagsPopover && <ArticleTagsPopover nodeId={node.id} onClose={() => setShowTagsPopover(false)} />}
           </div>
-        )}
-      </div>
-
-      <div className="absolute right-4 md:right-6 top-6 flex flex-col gap-2">
-        <button 
-          onClick={handleAutoHighlight}
-          disabled={loadingHighlight}
-          className="px-3 py-1.5 rounded-full shadow-sm border border-slate-200 bg-white text-slate-500 flex items-center justify-center gap-2 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors font-bold text-xs uppercase tracking-tight disabled:opacity-50"
-          title="Auto-Grifar com IA baseada na sua Regra de Cores"
-        >
-          <Wand2 size={14} className={loadingHighlight ? "animate-bounce text-indigo-600" : "text-indigo-600"} />
-          <span className="hidden sm:inline">Auto-Grifo (IA)</span>
-        </button>
-        <button 
-          onClick={() => {
-              if (srsTracking[node.id]) {
-                  removeFromSRS(node.id);
-              } else {
-                  addToSRS(node.id);
-              }
-          }}
-          className={cn("px-3 py-1.5 rounded-full shadow-sm border flex items-center justify-center gap-2 transition-colors font-bold text-xs uppercase tracking-tight", srsTracking[node.id] ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-500 border-slate-200 hover:bg-indigo-50 hover:text-indigo-600")} 
-          title={srsTracking[node.id] ? "Remover da Revisão (SRS)" : "Adicionar à Revisão Espaçada (SRS)"}
-        >
-          <Brain size={14} /> {srsTracking[node.id] ? "Em Revisão" : "Estudar"}
-        </button>
-        {!node.metadata?.verbos_nucleares && (
-          <button
-            onClick={handleEnrich}
-            disabled={loadingAi}
-            className="w-10 h-10 rounded-full bg-indigo-50 shadow-sm border border-indigo-100 flex items-center justify-center hover:bg-indigo-100 text-indigo-600 disabled:opacity-50 transition-colors"
-            title="Enriquecer com IA"
-          >
-            <Sparkles size={16} className={loadingAi ? "animate-spin" : ""} />
+          <button onClick={() => toggleNodeProperty(node.id, 'isFavorite')} className={cn("w-10 h-10 rounded-full shadow-sm border flex items-center justify-center transition-all", node.isFavorite ? "bg-amber-400 text-white border-amber-400 shadow-[0_4px_12px_rgba(245,158,11,0.25)]" : "bg-white text-slate-400 border-slate-200 hover:border-amber-400 hover:text-amber-500 hover:bg-amber-50/50")} title="Favoritar">
+            <Bookmark size={18} />
           </button>
-        )}
-        {(!node.metadata?.mapa_mental) && (
-          <button
-            onClick={handleGenerateMap}
-            disabled={loadingMap}
-            className="w-10 h-10 rounded-full bg-emerald-50 shadow-sm border border-emerald-100 flex items-center justify-center hover:bg-emerald-100 text-emerald-600 disabled:opacity-50 transition-colors"
-            title="Gerar Mapa Mental"
-          >
-            <Network size={16} className={loadingMap ? "animate-spin" : ""} />
+          
+          <button onClick={() => toggleNodeProperty(node.id, 'isRead')} className={cn("w-10 h-10 rounded-full shadow-sm border flex items-center justify-center transition-all", node.isRead ? "bg-emerald-500 text-white border-emerald-500 shadow-[0_4px_12px_rgba(16,185,129,0.25)]" : "bg-white text-slate-400 border-slate-200 hover:border-emerald-400 hover:text-emerald-500 hover:bg-emerald-50/50")} title="Marcar como lido">
+            <CheckCircle size={18} />
           </button>
-        )}
+          
+          <div className="w-px h-8 md:w-8 md:h-px bg-slate-200 hidden md:block my-2"></div>
+          
+          <button 
+            onClick={() => {
+                if (isSrs) {
+                    removeFromSRS(node.id);
+                } else {
+                    addToSRS(node.id);
+                }
+            }}
+            className={cn("w-10 h-10 rounded-full shadow-sm border flex items-center justify-center transition-all", isSrs ? "bg-cyan-500 text-white border-cyan-500 shadow-[0_4px_12px_rgba(6,182,212,0.3)]" : "bg-white text-slate-500 border-slate-200 hover:border-cyan-400 hover:text-cyan-600 hover:bg-cyan-50/50")} 
+            title={isSrs ? "Remover da Revisão (SRS)" : "Adicionar à Revisão Espaçada (SRS)"}
+          >
+            <Brain size={14} /> 
+          </button>
+        </div>
       </div>
-
     </article>
   );
 }
+export const ArticleCard = React.memo(ArticleCardComponent);

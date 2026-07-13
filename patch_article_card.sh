@@ -1,0 +1,2 @@
+sed -i 's/export function ArticleCard({ node, legislation }: { node: LawNode, legislation: Legislation }) {/const ArticleCardComponent = ({ node, legislation }: { node: LawNode, legislation: Legislation }) => {/' src/components/ArticleCard.tsx
+echo "export const ArticleCard = React.memo(ArticleCardComponent, (prevProps, nextProps) => prevProps.node.id === nextProps.node.id && prevProps.legislation.id === nextProps.legislation.id);" >> src/components/ArticleCard.tsx

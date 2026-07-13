@@ -74,30 +74,30 @@ export function SRSReviewDeck() {
 
   if (sessionActive && currentNode) {
     return (
-      <div className="flex-1 bg-slate-900 flex flex-col items-center justify-center p-4 relative w-full h-full">
+      <div className="flex-1 bg-stone-900 flex flex-col items-center justify-center p-4 relative w-full h-full">
         <button 
           onClick={() => setSessionActive(false)}
-          className="absolute top-6 left-6 text-slate-400 hover:text-white flex items-center gap-2"
+          className="absolute top-6 left-6 text-stone-400 hover:text-white flex items-center gap-2"
         >
           <ArrowLeft size={20} /> Sair da Revisão
         </button>
 
-        <div className="text-slate-400 mb-8 font-mono text-sm">
+        <div className="text-stone-400 mb-8 font-mono text-sm">
           Cartão {currentIndex + 1} de {reviewQueue.length}
         </div>
 
-        <div className="max-w-3xl w-full bg-white rounded-2xl p-8 md:p-12 shadow-2xl relative overflow-y-auto max-h-[70vh]">
+        <div className="max-w-3xl w-full bg-white rounded-2xl p-8 md:p-12 shadow-lg relative overflow-y-auto max-h-[70vh]">
            <div className="text-center mb-6">
-             <span className="text-xs font-bold uppercase tracking-widest text-indigo-600 mb-2 block">
+             <span className="text-xs font-bold uppercase tracking-widest text-blush-600 mb-2 block">
                {currentNode.legislation.title}
              </span>
-             <h2 className="text-3xl font-serif font-bold text-slate-800 mb-4">
+             <h2 className="text-3xl font-sans font-bold text-stone-800 mb-4">
                {currentNode.node.label}
              </h2>
              {!showAnswer && (
                <div className="inline-flex flex-wrap items-center justify-center gap-2 mb-4">
                  {currentNode.node.metadata?.termo_nucleo && (
-                   <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded-full border border-slate-200">
+                   <span className="px-3 py-1 bg-stone-100 text-stone-600 text-xs font-bold rounded-full border border-stone-200">
                      Dica: {currentNode.node.metadata.termo_nucleo}
                    </span>
                  )}
@@ -108,7 +108,7 @@ export function SRSReviewDeck() {
                  )}
                </div>
              )}
-             <p className="text-slate-500 text-sm max-w-md mx-auto">
+             <p className="text-stone-500 text-sm max-w-md mx-auto">
                {!showAnswer ? "Tente lembrar o conteúdo exato ou os pontos principais deste artigo antes de revelar." : "Avalie como foi sua lembrança:"}
              </p>
            </div>
@@ -117,15 +117,20 @@ export function SRSReviewDeck() {
              <div className="flex justify-center mt-12">
                <button 
                  onClick={() => setShowAnswer(true)}
-                 className="px-8 py-4 bg-indigo-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-indigo-700 transition-transform hover:scale-105"
+                 className="px-8 py-4 bg-blush-600 text-white font-bold text-lg rounded-xl shadow-sm hover:bg-blush-700 transition-transform hover:scale-105"
                >
                  Mostrar Texto Legal
                </button>
              </div>
            ) : (
              <div className="mt-8">
-               <div className="font-serif text-xl leading-relaxed text-slate-700 border-l-4 border-indigo-200 pl-6 mb-12 whitespace-pre-wrap">
-                 {currentNode.node.text}
+               <div className="font-sans text-xl leading-relaxed text-stone-700 border-l-4 border-blush-200 pl-6 mb-12 whitespace-pre-wrap">
+                 {currentNode.node.heading && (
+                  <div className="font-sans font-extrabold text-base text-stone-800 mb-2 tracking-tight">
+                    {currentNode.node.heading}
+                  </div>
+                )}
+                {currentNode.node.text}
                  {/* Only showing text for simplicity in review, if they need more, they can see in vade mecum */}
                </div>
                
@@ -160,54 +165,54 @@ export function SRSReviewDeck() {
         <div className="flex items-center gap-4 mb-8">
           <button 
             onClick={() => setShowReviewMode(false)}
-            className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+            className="w-10 h-10 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 hover:bg-stone-200"
           >
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 className="text-3xl font-bold text-slate-800 tracking-tight flex items-center gap-3">
-              <Brain className="text-indigo-600" size={32} /> Central de Revisão
+            <h1 className="text-3xl font-bold text-stone-800 tracking-tight flex items-center gap-3">
+              <Brain className="text-blush-600" size={32} /> Central de Revisão
             </h1>
-            <p className="text-slate-500 mt-1">Algoritmo Spaced Repetition System (SRS)</p>
+            <p className="text-stone-500 mt-1">Algoritmo Spaced Repetition System (SRS)</p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center justify-center text-center relative overflow-hidden">
-             <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500" />
-             <Inbox size={24} className="text-indigo-500 mb-3" />
-             <div className="text-4xl font-bold text-slate-800 mb-1">{totalTracked}</div>
-             <div className="text-sm font-semibold text-slate-500 uppercase tracking-widest">Mapeados</div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200 flex flex-col items-center justify-center text-center relative overflow-hidden">
+             <div className="absolute top-0 left-0 w-full h-1 bg-blush-500" />
+             <Inbox size={24} className="text-blush-500 mb-3" />
+             <div className="text-4xl font-bold text-stone-800 mb-1">{totalTracked}</div>
+             <div className="text-sm font-semibold text-stone-500 uppercase tracking-widest">Mapeados</div>
           </div>
           
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center justify-center text-center relative overflow-hidden">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200 flex flex-col items-center justify-center text-center relative overflow-hidden">
              <div className="absolute top-0 left-0 w-full h-1 bg-rose-500" />
              <Calendar size={24} className="text-rose-500 mb-3" />
              <div className="text-4xl font-bold text-rose-600 mb-1">{dueNodes.length}</div>
-             <div className="text-sm font-semibold text-slate-500 uppercase tracking-widest">Revisões Hoje</div>
+             <div className="text-sm font-semibold text-stone-500 uppercase tracking-widest">Revisões Hoje</div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center justify-center text-center relative overflow-hidden">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200 flex flex-col items-center justify-center text-center relative overflow-hidden">
              <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500" />
              <TrendingUp size={24} className="text-emerald-500 mb-3" />
-             <div className="text-4xl font-bold text-slate-800 mb-1">{graduatedPhase}</div>
-             <div className="text-sm font-semibold text-slate-500 uppercase tracking-widest">Memorizados</div>
+             <div className="text-4xl font-bold text-stone-800 mb-1">{graduatedPhase}</div>
+             <div className="text-sm font-semibold text-stone-500 uppercase tracking-widest">Memorizados</div>
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-3xl p-8 md:p-12 text-center shadow-sm max-w-2xl mx-auto">
+        <div className="bg-white border border-stone-200 rounded-3xl p-8 md:p-12 text-center shadow-sm max-w-2xl mx-auto">
           {dueNodes.length > 0 ? (
             <>
-              <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
+              <div className="w-20 h-20 bg-blush-50 text-blush-600 rounded-full flex items-center justify-center mx-auto mb-6">
                 <Brain size={40} />
               </div>
-              <h2 className="text-2xl font-bold text-slate-800 mb-4">Você tem {dueNodes.length} cards pendentes</h2>
-              <p className="text-slate-500 mb-8 max-w-md mx-auto">
+              <h2 className="text-2xl font-bold text-stone-800 mb-4">Você tem {dueNodes.length} cards pendentes</h2>
+              <p className="text-stone-500 mb-8 max-w-md mx-auto">
                 Revise os artigos no momento exato em que seu cérebro está prestes a esquecê-los para consolidar a memória de longo prazo.
               </p>
               <button 
                 onClick={startSession}
-                className="px-8 py-4 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 hover:-translate-y-1 transition-all duration-200 flex items-center gap-3 mx-auto"
+                className="px-8 py-4 bg-blush-600 text-white font-bold rounded-xl shadow-sm hover:bg-blush-700 hover:-translate-y-1 transition-all duration-200 flex items-center gap-3 mx-auto"
               >
                 <Brain size={20} />
                 Iniciar Sessão de Revisão
@@ -218,13 +223,13 @@ export function SRSReviewDeck() {
               <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6">
                 <Check size={40} />
               </div>
-              <h2 className="text-2xl font-bold text-slate-800 mb-4">Tudo em dia!</h2>
-              <p className="text-slate-500 mb-8 max-w-md mx-auto">
+              <h2 className="text-2xl font-bold text-stone-800 mb-4">Tudo em dia!</h2>
+              <p className="text-stone-500 mb-8 max-w-md mx-auto">
                 Você não tem revisões pendentes para hoje. Adicione novos artigos ao seu plano de estudos clicando no ícone do cérebro nos artigos.
               </p>
               <button 
                 onClick={() => setShowReviewMode(false)}
-                className="px-8 py-4 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors mx-auto"
+                className="px-8 py-4 bg-stone-100 text-stone-700 font-bold rounded-xl hover:bg-stone-200 transition-colors mx-auto"
               >
                 Voltar para o Vade Mecum
               </button>
